@@ -39,6 +39,10 @@ const workflow = {
           check: {
             status: "/^20/"
           }
+        },
+        retry: {
+          intervalSec: 1,
+          maxCount: 10
         }
       }]
     }
