@@ -105,6 +105,7 @@ export type Step = {
   if?: string
   http?: HTTPStep
   grpc?: gRPCStep
+  retry?: RetryStep
 }
 
 export type HTTPStep = {
@@ -227,6 +228,11 @@ export type gRPCStepCheck = {
   performance?: StepCheckPerformance | StepCheckMatcher
   size?: number | Matcher[]
   co2?: number | Matcher[]
+}
+
+export type RetryStep = {
+  maxCount: number
+  intervalSec: number
 }
 
 export type StepCheckValue = {
@@ -406,6 +412,10 @@ export async function run (workflow: Workflow, options?: WorkflowOptions): Promi
   return workflowResult
 }
 
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function runTest (id: string, test: Test, schemaValidator: Ajv, options?: WorkflowOptions, config?: WorkflowConfig, env?: object, credentials?: CredentialsStorage): Promise<TestResult> {
   const testResult: TestResult = {
     id,
@@ -451,6 +461,11 @@ async function runTest (id: string, test: Test, schemaValidator: Ajv, options?: 
     } else if (step.if && !checkCondition(step.if, { captures, env: { ...env, ...test.env } })) {
       stepResult.skipped = true
     } else {
+
+      // for retry
+      var retryCount = 0
+      do {
+
       try {
         step = renderObject(step, {
           captures,
@@ -928,6 +943,14 @@ async function runTest (id: string, test: Test, schemaValidator: Ajv, options?: 
         stepResult.errorMessage = (error as Error).message
         options?.ee?.emit('step:error', error)
       }
+
+      // for retry
+      ++retryCount;
+      if (!stepResult.passed && step?.retry && retryCount <= step.retry.maxCount && step.retry.intervalSec > 0) {
+        await sleep(step.retry.intervalSec * 1000);
+      }
+      }
+      while (!stepResult.passed && step?.retry && retryCount <= step.retry.maxCount)
     }
 
     stepResult.duration = Date.now() - stepResult.timestamp.valueOf()
